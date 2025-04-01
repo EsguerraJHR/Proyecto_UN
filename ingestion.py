@@ -1,38 +1,37 @@
 from dotenv import load_dotenv
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_chroma import Chroma
-from langchain_community.document_loaders import WebBaseLoader
 from langchain_openai import OpenAIEmbeddings
+import os
+import pinecone
+from langchain_pinecone import PineconeVectorStore
+import streamlit as st
 
 load_dotenv()
 
-# Este archivo ya no se usa para la ingesta principal, pero se mantiene como referencia
-# La ingesta ahora se realiza con ingest_legal_docs.py
-
-# urls = [
-#     "https://lilianweng.github.io/posts/2023-06-23-agent/",
-#     "https://lilianweng.github.io/posts/2023-03-15-prompt-engineering/",
-#     "https://lilianweng.github.io/posts/2023-10-25-adv-attack-llm/",
-# ]
-
-# docs = [WebBaseLoader(url).load() for url in urls]
-# docs_list = [item for sublist in docs for item in sublist]
-
-# text_splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
-#     chunk_size=250, chunk_overlap=0
-# )
-# doc_splits = text_splitter.split_documents(docs_list)
-
-# vectorstore = Chroma.from_documents(
-#     documents=doc_splits,
-#     collection_name="rag-chroma",
-#     embedding=OpenAIEmbeddings(),
-#     persist_directory="./.chroma",
-# )
-
-# Configurar el retriever para usar la nueva colección de documentos jurídicos
-retriever = Chroma(
-    collection_name="legal-docs-chroma",  # Actualizado para usar la nueva colección
-    persist_directory="./.chroma",
-    embedding_function=OpenAIEmbeddings(),
-).as_retriever()
+# Configurar Pinecone como único retriever
+try:
+    # Obtener API key desde las variables de entorno
+    pinecone_api_key = os.environ.get("PINECONE_API_KEY")
+    # Usar el índice legal-docs por defecto, pero permitir configuración mediante variable de entorno
+    index_name = os.environ.get("PINECONE_INDEX_NAME", "timbre")
+    
+    # Inicializar Pinecone y configurar el retriever
+    pc = pinecone.Pinecone(api_key=pinecone_api_key)
+    
+    # Configurar el retriever con Pinecone
+    retriever = PineconeVectorStore(
+        index_name=index_name,
+        embedding=OpenAIEmbeddings(),
+        text_key="text"
+    ).as_retriever()
+    
+    print(f"Pinecone configurado correctamente con el índice: {index_name}")
+    
+except Exception as e:
+    print(f"Error al configurar Pinecone: {str(e)}")
+    # Usar un retriever nulo que devuelva lista vacía como fallback
+    class NullRetriever:
+        def invoke(self, query):
+            print(f"Error: No se pudo configurar un retriever válido. Query: {query}")
+            return []
+    
+    retriever = NullRetriever()
